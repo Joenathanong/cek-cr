@@ -5,7 +5,7 @@
 -- database yang sudah berisi data (DROP di bawah akan menghapusnya).
 -- =====================================================================
 
-DROP TABLE IF EXISTS cek_history, massal_run, audit_log, login_log, rate, armada,
+DROP TABLE IF EXISTS pengaturan, cek_history, massal_run, audit_log, login_log, rate, armada,
   ekspedisi, distributor, area, kota, gudang, users CASCADE;
 DROP FUNCTION IF EXISTS set_last_change() CASCADE;
 DROP FUNCTION IF EXISTS audit_trigger() CASCADE;
@@ -57,6 +57,7 @@ CREATE TABLE kota (
   alias          text,              -- dipisah koma, mis. "YOGYA, JOGJA"
   provinsi       text,
   batas_leadtime numeric(6,2),      -- hari; kosong = tanpa batas
+  prioritas      int,               -- urutan alokasi stok bila dasar prioritas = KOTA; kosong = paling akhir
   updated_at     timestamptz NOT NULL DEFAULT now(),
   updated_by     text
 );
@@ -75,6 +76,7 @@ CREATE TABLE distributor (
   nama       text NOT NULL,
   kota_id    int NOT NULL REFERENCES kota(id) ON UPDATE CASCADE ON DELETE RESTRICT,
   area_id    int REFERENCES area(id) ON DELETE SET NULL,
+  asm        text,
   aktif      boolean NOT NULL DEFAULT true,
   updated_at timestamptz NOT NULL DEFAULT now(),
   updated_by text
@@ -144,6 +146,14 @@ CREATE TABLE audit_log (
 CREATE INDEX audit_log_waktu_idx ON audit_log (waktu DESC);
 CREATE INDEX audit_log_user_idx ON audit_log (username);
 
+CREATE TABLE pengaturan (
+  kunci      text PRIMARY KEY,
+  nilai      text,
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  updated_by text
+);
+INSERT INTO pengaturan (kunci, nilai) VALUES ('dasar_prioritas', 'AREA');
+
 CREATE TABLE massal_run (
   id                 bigserial PRIMARY KEY,
   user_id            int,
@@ -153,6 +163,8 @@ CREATE TABLE massal_run (
   jumlah_distributor int,
   total_nilai_po     numeric(18,2),
   total_ongkir       numeric(18,2),
+  dasar_prioritas    text,
+  items              jsonb,          -- item SO yang dialokasikan (untuk tampilan Cek CR di riwayat)
   created_at         timestamptz NOT NULL DEFAULT now()
 );
 

@@ -52,10 +52,11 @@ export const POST = handler(async (req) => {
 
   const runId = await withUser(u, async (q) => {
     const run = await q(
-      `INSERT INTO massal_run (user_id, username, gudang_kode, keterangan, jumlah_distributor, total_nilai_po, total_ongkir)
-       VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id`,
+      `INSERT INTO massal_run (user_id, username, gudang_kode, keterangan, jumlah_distributor, total_nilai_po, total_ongkir, dasar_prioritas, items)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id`,
       [u.id, u.username, gudang.kode, String(b.keterangan || '').slice(0, 300), hasil.length,
-        hasil.reduce((s, h) => s + h.nilaiPo, 0), hasil.reduce((s, h) => s + (h.utama?.ongkir || 0), 0)]);
+        hasil.reduce((s, h) => s + h.nilaiPo, 0), hasil.reduce((s, h) => s + (h.utama?.ongkir || 0), 0),
+        b.dasarPrioritas || null, Array.isArray(b.items) ? JSON.stringify(b.items.slice(0, 20000)) : null]);
     const id = run[0].id;
     const recs = hasil.map((h) => ({
       run_id: id, tipe: 'MASSAL', user_id: u.id, username: u.username, gudang_kode: gudang.kode, kota_nama: h.kota,

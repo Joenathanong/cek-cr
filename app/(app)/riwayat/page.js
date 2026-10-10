@@ -6,6 +6,19 @@ import { tulisExcel, FMT } from '@/lib/excel';
 import Modal from '@/components/Modal';
 import ResultView, { opsiDariRiwayat } from '@/components/ResultView';
 import { useUser } from '@/components/Shell';
+import CekCrView from '@/components/CekCrView';
+import { susunGrup } from '@/lib/cekcr';
+import { exportMassal } from '@/lib/massalExport';
+
+function hasilDariRow(r) {
+  const x = r.hasil || {};
+  const conv = (o) => o && { ...o, ...ltArr(o.lt) };
+  return {
+    kode: r.distributor_kode || '', nama: r.distributor_nama, kota: r.kota_nama, kg: r.kg, m3: r.m3, nilaiPo: r.nilai_po,
+    utama: conv(x.utama), termurah: conv(x.termurah), tercepat: conv(x.tercepat), peringatan: x.peringatan || [],
+    opsi: opsiDariRiwayat(x.opsi),
+  };
+}
 
 const ltArr = (l) => (l ? { leadtime_min: l[0], leadtime_max: l[1] } : {});
 
@@ -36,22 +49,17 @@ export default function Riwayat() {
 
   async function bukaRun(r) {
     const d = await api(`/api/riwayat/${r.id}`);
-    setRun(d);
+    setRun({ ...d, items: d.run.items || null });
   }
 
   function exportRun() {
-    tulisExcel(`riwayat-massal-${run.run.id}.xlsx`, [{
-      nama: 'Ringkasan',
-      catatan: [`Proses massal #${run.run.id} oleh ${run.run.username}, ${tanggalWaktu(run.run.created_at)}`, run.run.keterangan || ''],
-      kolom: [
-        { label: 'Kode Distributor', key: 'distributor_kode' }, { label: 'Distributor', key: 'distributor_nama', width: 34 },
-        { label: 'Kota', key: 'kota_nama' }, { label: 'KG', key: 'kg', fmt: FMT.angka }, { label: 'M3', key: 'm3', fmt: FMT.m3 },
-        { label: 'Value PO (Rp)', key: 'nilai_po', fmt: FMT.rp }, { label: 'Ekspedisi', key: 'rekom_ekspedisi', width: 30 },
-        { label: 'Layanan', key: 'rekom_layanan' }, { label: 'Ongkir (Rp)', key: 'rekom_ongkir', fmt: FMT.rp },
-        { label: 'Leadtime', key: 'rekom_leadtime' }, { label: 'Cost Ratio (%)', key: 'rekom_cr', fmt: FMT.angka },
-      ],
-      data: run.rows,
-    }]);
+    const hasil = run.rows.map(hasilDariRow);
+    exportMassal({
+      namaFile: `riwayat-massal-${run.run.id}.xlsx`,
+      catatan: [`Proses massal #${run.run.id} oleh ${run.run.username}, ${tanggalWaktu(run.run.created_at)}`, run.run.keterangan || '',
+        run.run.dasar_prioritas ? `Dasar prioritas: ${run.run.dasar_prioritas}` : ''].filter(Boolean),
+      groups: run.items ? susunGrup(run.items, hasil) : null, hasil,
+    });
     catatExport('cek_massal', `Export riwayat massal #${run.run.id}`);
   }
 
@@ -140,8 +148,12 @@ export default function Riwayat() {
       {run && (
         <Modal title={`Proses massal #${run.run.id}`} onClose={() => setRun(null)} wide>
           <p className="small muted" style={{ marginTop: 0 }}>{run.run.keterangan} oleh {run.run.username}, {tanggalWaktu(run.run.created_at)}</p>
-          <div className="toolbar"><div className="grow" /><button className="btn ghost sm" onClick={exportRun}>Download Excel</button></div>
-          <div className="table-wrap" style={{ maxHeight: '60vh', overflowY: 'auto' }}>
+          {run.items ? (
+            <CekCrView groups={susunGrup(run.items, run.rows.map(hasilDariRow))} toolbar={<button className="btn sm" onClick={exportRun}>Download Excel</button>} />
+          ) : (
+            <>
+              <div className="toolbar"><div className="grow" /><button className="btn sm" onClick={exportRun}>Download Excel</button></div>
+            <div className="table-wrap" style={{ maxHeight: '60vh', overflowY: 'auto' }}>
             <table className="data">
               <thead><tr><th>Distributor</th><th>Kota</th><th className="num">KG</th><th className="num">Value PO</th><th>Rekomendasi</th><th className="num">Ongkir</th><th className="num">CR</th></tr></thead>
               <tbody>{run.rows.map((r) => (
@@ -154,6 +166,8 @@ export default function Riwayat() {
               ))}</tbody>
             </table>
           </div>
+            </>
+          )}
         </Modal>
       )}
     </div>

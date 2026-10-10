@@ -10,7 +10,7 @@ export const GET = handler(async (req) => {
   const cari = `%${(sp.get('q') || '').trim()}%`;
   if (sp.get('tipe') === 'MASSAL') {
     const rows = await query(
-      `SELECT * FROM massal_run WHERE keterangan ILIKE $1 OR username ILIKE $1 ORDER BY created_at DESC LIMIT ${size + 1} OFFSET ${off}`, [cari]);
+      `SELECT id, user_id, username, gudang_kode, keterangan, jumlah_distributor, total_nilai_po, total_ongkir, dasar_prioritas, created_at FROM massal_run WHERE keterangan ILIKE $1 OR username ILIKE $1 ORDER BY created_at DESC LIMIT ${size + 1} OFFSET ${off}`, [cari]);
     return json({ rows: rows.slice(0, size), more: rows.length > size });
   }
   const rows = await query(

@@ -19,6 +19,8 @@ Teknologi: Next.js 14 (hosting di Vercel gratis) dan PostgreSQL di Neon (gratis)
    `DATABASE_URL="connection-string" npm run db:setup`.
 
 > `schema.sql` menghapus tabel lama. Jalankan **hanya sekali** saat pertama kali setup.
+>
+> **Sudah memasang versi sebelumnya?** Jangan jalankan ulang `schema.sql`/`seed.sql`. Cukup jalankan `db/migrasi-v2.sql` di SQL Editor (aman, data tidak hilang), lalu deploy ulang kode terbaru.
 
 ## 2. Upload kode ke GitHub
 
@@ -71,10 +73,14 @@ Aplikasi langsung meminta ganti password. Setelah itu buat akun tim di menu **Ke
 ### Cek massal dari SAP
 
 1. File dibaca di browser, tidak dikirim mentah ke server.
-2. Stok tersedia (sheet Stock) dialokasikan ke baris ZSDR007 berdasarkan urutan: prioritas area distributor → tanggal SO terlama → nomor SO.
+2. Stok tersedia (sheet Stock) dialokasikan ke baris ZSDR007 sesuai **dasar prioritas** yang dipilih:
+   - **Area**: urutan area (menu Prioritas Alokasi) → tanggal SO terlama → nomor SO.
+   - **Kota pilihan**: kota yang dipilih berurutan didahulukan, area tidak dipakai. Kota lain mendapat sisa stok, urut tanggal SO.
+   Pengaturan bawaan diatur di menu **Prioritas Alokasi** (Admin & Admin WH), dan bisa diubah sementara di halaman cek massal.
 3. Harga per pcs dari VA05 dan berat/volume per pcs dari ZSDR006 (key: No. SO + Material) dikalikan qty yang dialokasikan.
 4. Semua SO ke distributor yang sama dijumlahkan menjadi satu kiriman, lalu dihitung seperti cek individual.
-5. Hasil bisa di-download (sheet Ringkasan, Semua Opsi, Alokasi SO).
+5. Tampilan **Cek CR** menunjukkan item SO per distributor (status stock ready / stock tipis / Stock Kosong, qty outstanding, qty dikirim, value, kg, m³) dan baris total berisi ekspedisi rekomendasi, ongkir, leadtime, dan cost ratio, mengikuti format sheet "Cek CR".
+6. Download Excel berisi sheet **Cek CR**, **Ringkasan**, **Semua Opsi**, dan **Stok per Material**. Hasil yang sama bisa dibuka & di-download lagi dari menu Riwayat.
 
 ## 7. Upload master data
 

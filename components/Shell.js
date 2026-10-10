@@ -47,6 +47,7 @@ export default function Shell({ children }) {
               <nav className="nav-group" aria-label="Master data">
                 <span>Master data</span>
                 {masters.map((m) => link(`/master/${m}`, ENTITIES[m].label))}
+                {link('/prioritas', 'Prioritas Alokasi')}
               </nav>
               {(MENU_ACCESS.log.includes(role) || role === 'admin') && (
                 <nav className="nav-group" aria-label="Administrasi">
