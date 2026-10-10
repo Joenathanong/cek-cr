@@ -247,3 +247,27 @@ table.cekcr .tot-line .rek { font-weight: 500; }
 table.cekcr .tot-line .cr { margin-left: 10px; background: var(--signal); color: var(--ink); padding: 1px 8px; border-radius: 3px; font: 600 15px var(--font-cond); }
 table.cekcr tbody tr:hover td { background: inherit; }
 @media (max-width: 860px) { .stats > div { flex: 1 1 45%; border-bottom: 1px solid var(--line); } }
+
+/* ---------- v3: pop up prioritas ---------- */
+.prio-bar { display: grid; grid-template-columns: 180px minmax(0, 1fr) minmax(0, 1.2fr); gap: 12px; align-items: end; }
+@media (max-width: 860px) { .prio-bar { grid-template-columns: 1fr; } }
+.prio-list.big { max-height: 52vh; }
+.prio-list li[draggable] { cursor: grab; }
+.prio-list li.over { border-color: var(--spruce-2); box-shadow: inset 0 3px 0 var(--spruce-2); }
+.prio-list .grip { color: var(--line-strong); letter-spacing: -2px; user-select: none; }
+.prio-list .no-input {
+  width: 46px; height: 30px; border: 1px solid var(--line-strong); border-radius: 4px; text-align: center;
+  font: 600 15px var(--font-cond); color: #fff; background: var(--spruce); flex: none;
+}
+.prio-list .no-input:focus { background: #fff; color: var(--ink); outline: 2px solid var(--spruce-2); }
+.prio-list .nm small, .baru-box .nm small { display: block; font-size: 12.5px; color: var(--muted); font-weight: 400; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.prio-list .so { flex: none; }
+@media (max-width: 860px) { .prio-list .so, .prio-list .grip { display: none; } .prio-list li { flex-wrap: wrap; } }
+.baru-box { background: var(--signal-soft); border: 1px solid #ecd68a; border-radius: var(--r); padding: 12px 14px; margin-bottom: 12px; }
+.baru-box ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.baru-box li { display: flex; gap: 10px; align-items: center; justify-content: space-between; flex-wrap: wrap; background: #fff; border-radius: 4px; padding: 6px 8px; }
+.baru-box .nm { min-width: 0; flex: 1; font-weight: 500; }
+.modal-foot { padding: 14px 0 4px; margin-top: 12px; border-top: 1px solid var(--line); }
+.prio-ringkas { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 0; padding: 0; list-style: none; }
+.prio-ringkas li { font-size: 13px; background: var(--spruce-soft); color: var(--spruce); border-radius: 99px; padding: 2px 10px; }
+.prio-ringkas li b { font-weight: 600; margin-right: 4px; }

@@ -20,7 +20,7 @@ Teknologi: Next.js 14 (hosting di Vercel gratis) dan PostgreSQL di Neon (gratis)
 
 > `schema.sql` menghapus tabel lama. Jalankan **hanya sekali** saat pertama kali setup.
 >
-> **Sudah memasang versi sebelumnya?** Jangan jalankan ulang `schema.sql`/`seed.sql`. Cukup jalankan `db/migrasi-v2.sql` di SQL Editor (aman, data tidak hilang), lalu deploy ulang kode terbaru.
+> **Sudah memasang versi sebelumnya?** Jangan jalankan ulang `schema.sql`/`seed.sql`. Cukup jalankan `db/migrasi-v3.sql` di SQL Editor (aman, data tidak hilang, bisa dari versi mana pun), lalu deploy ulang kode terbaru.
 
 ## 2. Upload kode ke GitHub
 
@@ -50,7 +50,7 @@ Aplikasi langsung meminta ganti password. Setelah itu buat akun tim di menu **Ke
 |---|---|
 | Admin | Semua menu, kelola user, log login |
 | Purchasing | Ubah/upload rate, ekspedisi, armada |
-| Admin WH | Ubah/upload distributor, kota, prioritas area, batas leadtime |
+| Admin WH | Ubah/upload distributor, kota, area, batas leadtime |
 | Warehouse | Cek cost ratio dan riwayat (master data hanya lihat) |
 
 ## 5. Hal penting
@@ -72,15 +72,17 @@ Aplikasi langsung meminta ganti password. Setelah itu buat akun tim di menu **Ke
 
 ### Cek massal dari SAP
 
-1. File dibaca di browser, tidak dikirim mentah ke server.
-2. Stok tersedia (sheet Stock) dialokasikan ke baris ZSDR007 sesuai **dasar prioritas** yang dipilih:
-   - **Area**: urutan area (menu Prioritas Alokasi) → tanggal SO terlama → nomor SO.
-   - **Kota pilihan**: kota yang dipilih berurutan didahulukan, area tidak dipakai. Kota lain mendapat sisa stok, urut tanggal SO.
-   Pengaturan bawaan diatur di menu **Prioritas Alokasi** (Admin & Admin WH), dan bisa diubah sementara di halaman cek massal.
-3. Harga per pcs dari VA05 dan berat/volume per pcs dari ZSDR006 (key: No. SO + Material) dikalikan qty yang dialokasikan.
-4. Semua SO ke distributor yang sama dijumlahkan menjadi satu kiriman, lalu dihitung seperti cek individual.
-5. Tampilan **Cek CR** menunjukkan item SO per distributor (status stock ready / stock tipis / Stock Kosong, qty outstanding, qty dikirim, value, kg, m³) dan baris total berisi ekspedisi rekomendasi, ongkir, leadtime, dan cost ratio, mengikuti format sheet "Cek CR".
-6. Download Excel berisi sheet **Cek CR**, **Ringkasan**, **Semua Opsi**, dan **Stok per Material**. Hasil yang sama bisa dibuka & di-download lagi dari menu Riwayat.
+1. Upload ZSDR007, ZSDR006, VA05, dan Stock (4 file terpisah atau 1 file berisi 4 sheet). File dibaca di browser, tidak dikirim mentah ke server.
+2. Begitu ZSDR007 terbaca, muncul pop up **List prioritas area**:
+   - pilih **Berdasarkan Area** atau **Berdasarkan Kota**;
+   - daftar diambil dari isi ZSDR007 (urut abjad). Jika kolom **City, ASM, AREA** di ZSDR007 terisi semua, daftar memakai kolom tersebut (mis. "JAKARTA GDV" terpisah dari "JAKARTA"). Jika ada yang kosong, daftar memakai kota & area dari master distributor;
+   - urutan diubah dengan tarik-geser, tombol paling atas/bawah, ▲▼, atau ketik nomor urut; bisa juga export lalu upload Excel;
+   - **Simpan template** menyimpan urutan untuk dipakai lagi. Saat template dipakai dan ada area/kota baru yang belum ada di template, area/kota tersebut muncul di kotak kuning dan harus ditempatkan dulu. Area/kota di template yang tidak muncul di file bulan ini tetap tersimpan di posisinya.
+3. Stok dialokasikan: urutan prioritas → tanggal SO terlama → nomor SO. Urutan paling bawah mendapat sisa terakhir (bisa sebagian atau tidak sama sekali).
+4. Harga per pcs dari VA05 dan berat/volume per pcs dari ZSDR006 (key: No. SO + Material) dikalikan qty yang dialokasikan, lalu semua SO ke distributor yang sama dijumlahkan menjadi satu kiriman dan dihitung ongkirnya.
+5. Setelah proses selesai, list prioritas kosong kembali. Urutan yang dipakai tetap dicatat di hasil, Excel, dan Riwayat.
+6. Tampilan **Cek CR** menunjukkan item SO per distributor (status stock ready / stock tipis / Stock Kosong, qty outstanding, qty dikirim, value, kg, m³) dan baris total berisi ekspedisi rekomendasi, ongkir, leadtime, dan cost ratio.
+7. Download Excel berisi sheet **Cek CR**, **Ringkasan**, **Semua Opsi**, dan **Stok per Material**.
 
 ## 7. Upload master data
 

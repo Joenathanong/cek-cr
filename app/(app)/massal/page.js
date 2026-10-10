@@ -1,57 +1,31 @@
 'use client';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { api, catatExport } from '@/lib/client';
-import { bacaWorkbook, sheetKeObjek, tulisExcel } from '@/lib/excel';
-import { deteksi, prosesMassal, LAPORAN, STATUS } from '@/lib/sap';
+import { bacaWorkbook } from '@/lib/excel';
+import { deteksi, prosesMassal, daftarPrioritas, LAPORAN, STATUS } from '@/lib/sap';
 import { susunGrup, ringkasItem } from '@/lib/cekcr';
 import { exportMassal } from '@/lib/massalExport';
-import { rupiah, angka, persen, leadtimeText, parseAngka, parseDesimal } from '@/lib/format';
-import { MENU_ACCESS } from '@/lib/entities';
+import { rupiah, angka, persen, leadtimeText } from '@/lib/format';
 import DataTable from '@/components/DataTable';
 import Modal from '@/components/Modal';
 import ResultView from '@/components/ResultView';
 import CekCrView from '@/components/CekCrView';
-import PrioritasEditor, { dariApi } from '@/components/PrioritasEditor';
+import PrioritasModal from '@/components/PrioritasModal';
 import { useUser } from '@/components/Shell';
 
-const TEMPLATE_KOLOM = ['Referensi', 'Kode Distributor', 'Kota Tujuan', 'Berat (kg)', 'Volume (m3)', 'Value PO (Rp)'];
 const lt = (o) => (o ? leadtimeText(o.leadtime_min, o.leadtime_max) : '-');
 const tgl = () => new Date().toISOString().slice(0, 10);
-
-function unduhTemplateMassal() {
-  tulisExcel('template-cek-massal.xlsx', [
-    {
-      nama: 'Data',
-      kolom: TEMPLATE_KOLOM.map((k) => ({ label: k, key: k, width: 20 })),
-      data: [
-        { Referensi: 'PO-001', 'Kode Distributor': '1010000187', 'Kota Tujuan': '', 'Berat (kg)': 100, 'Volume (m3)': 0.35, 'Value PO (Rp)': 5000000 },
-        { Referensi: 'PO-002', 'Kode Distributor': '', 'Kota Tujuan': 'PONTIANAK', 'Berat (kg)': 250, 'Volume (m3)': '', 'Value PO (Rp)': 12500000 },
-      ],
-    },
-    {
-      nama: 'Petunjuk',
-      kolom: [{ label: 'Petunjuk pengisian', key: 'p', width: 100 }],
-      data: [
-        'Satu baris = satu kiriman. Hapus 2 baris contoh sebelum upload.',
-        'Isi Kode Distributor ATAU Kota Tujuan. Jika kode diisi, kota diambil dari master distributor.',
-        'Berat dalam kg, volume dalam m3. Minimal salah satu diisi.',
-        'Value PO dalam rupiah, exclude PPN, tanpa titik/koma pemisah ribuan.',
-        'Gudang asal dipilih di halaman upload.',
-      ].map((p) => ({ p })),
-    },
-  ]);
-}
 
 export default function Massal() {
   const user = useUser();
   const [lk, setLk] = useState(null);
-  const [prio, setPrio] = useState(null);
-  const [prioApi, setPrioApi] = useState(null);
-  const [prioMsg, setPrioMsg] = useState('');
-  const [mode, setMode] = useState('sap');
+  const [prio, setPrio] = useState(null);          // urutan yang sudah dikonfirmasi untuk proses ini
+  const [prioPakai, setPrioPakai] = useState(null);  // urutan yang dipakai pada hasil terakhir
+  const [daftar, setDaftar] = useState(null);        // daftar area & kota dari ZSDR007
+  const [bukaPrio, setBukaPrio] = useState(false);
+  const [templates, setTemplates] = useState([]);
   const [files, setFiles] = useState([]);
   const [found, setFound] = useState({});
-  const [tpl, setTpl] = useState(null);
   const [gudangId, setGudangId] = useState('');
   const [ket, setKet] = useState('');
   const [status, setStatus] = useState('');
@@ -70,7 +44,7 @@ export default function Massal() {
       const def = d.gudang.find((g) => g.default_massal) || d.gudang[0];
       setGudangId(String(def?.id || ''));
     }).catch((e) => setErr([e.message]));
-    api('/api/prioritas').then((d) => { setPrioApi(d); setPrio(dariApi(d)); }).catch(() => {});
+    api('/api/prioritas-template').then((d) => setTemplates(d.rows)).catch(() => {});
   }, []);
 
   const groups = useMemo(() => (proses && hasil ? susunGrup(proses.detail, hasil.hasil) : []), [proses, hasil]);
@@ -80,14 +54,6 @@ export default function Massal() {
     if (!arr.length) { setErr(['Pilih file Excel (.xlsx, .xls, .xlsm) atau .csv.']); return; }
     setErr([]); setHasil(null); setProses(null);
     try {
-      if (mode === 'template') {
-        setStatus(`Membaca ${arr[0].name}…`);
-        const wb = await bacaWorkbook(arr[0]);
-        const { rows } = sheetKeObjek(wb.Sheets[wb.SheetNames[0]], TEMPLATE_KOLOM);
-        setTpl({ nama: arr[0].name, rows });
-        setStatus('');
-        return;
-      }
       const baru = [];
       for (const f of arr) {
         setStatus(`Membaca ${f.name}… (file besar bisa butuh beberapa detik)`);
@@ -95,87 +61,69 @@ export default function Massal() {
         baru.push({ nama: f.name, wb: await bacaWorkbook(f) });
       }
       const all = [...files.filter((x) => !baru.some((b) => b.nama === x.nama)), ...baru];
-      setFiles(all);
-      setFound(deteksi(all));
-      setStatus('');
+      const fd = deteksi(all);
+      setFiles(all); setFound(fd); setStatus('');
+      // ZSDR007 terdeteksi (baru atau berganti) -> susun daftar prioritas & buka pop up
+      if (fd.ZSDR007 && (!found.ZSDR007 || fd.ZSDR007.file !== found.ZSDR007.file || baru.some((b) => b.nama === fd.ZSDR007.file))) {
+        const d = daftarPrioritas(fd, lk.distributor);
+        if (d.error) { setErr(d.error); return; }
+        setDaftar(d); setPrio(null); setBukaPrio(true);
+      }
     } catch (e) {
       setStatus(''); setErr([`Gagal membaca file: ${e.message}`]);
     }
   }
 
   function reset() {
-    setFiles([]); setFound({}); setTpl(null); setHasil(null); setProses(null); setErr([]); setInfo([]); setStatus('');
-  }
-
-  async function simpanPrioritas() {
-    setPrioMsg('');
-    try {
-      const x = await api('/api/prioritas', { method: 'PUT', body: { mode: prio.mode, area: prio.area.map((a) => a.id), kota: prio.kota.map((k) => k.id) } });
-      setPrioApi({ ...prioApi, ...x }); setPrioMsg('Disimpan sebagai pengaturan bawaan.');
-    } catch (e) { setPrioMsg(e.message); }
+    setFiles([]); setFound({}); setHasil(null); setProses(null); setErr([]); setInfo([]); setStatus('');
+    setDaftar(null); setPrio(null); setBukaPrio(false);
   }
 
   async function hitung() {
     setErr([]); setInfo([]); setHasil(null);
-    let rows, p = null;
-    if (mode === 'sap') {
-      setStatus('Mengalokasikan stok sesuai prioritas & menjumlahkan per distributor…');
-      await new Promise((r) => setTimeout(r, 30));
-      p = prosesMassal(found, lk.distributor, {
-        dasar: prio?.mode, urutanKota: prio?.kota.map((k) => k.nama), urutanArea: prio?.area.map((a) => a.nama),
-      });
-      if (p.error) { setErr(p.error); setStatus(''); return; }
-      rows = p.ringkasan.filter((r) => r.qtyAlokasi > 0).map((r) => ({ kode: r.kode, nama: r.nama, kg: r.kg, m3: r.m3, nilaiPo: r.nilaiPo, jumlahSo: r.jumlahSo }));
-      const nol = p.ringkasan.filter((r) => r.qtyAlokasi === 0).length;
-      setInfo([...p.info, ...(nol ? [`${nol} distributor tidak mendapat stok sama sekali (semua item Stock Kosong), tidak dihitung ongkirnya.`] : [])]);
-    } else {
-      const e = [];
-      rows = (tpl?.rows || []).map((r) => ({
-        ref: r['Referensi'] ? String(r['Referensi']) : null,
-        kode: r['Kode Distributor'] ? String(r['Kode Distributor']).trim() : '',
-        kota: r['Kota Tujuan'] ? String(r['Kota Tujuan']).trim() : '',
-        kg: parseAngka(r['Berat (kg)']) || 0, m3: parseDesimal(r['Volume (m3)']) || 0, nilaiPo: parseAngka(r['Value PO (Rp)']) || 0,
-        __row: r.__row,
-      }));
-      rows.forEach((r) => { if (!r.kode && !r.kota) e.push(`Baris ${r.__row}: isi Kode Distributor atau Kota Tujuan.`); });
-      if (e.length) { setErr(e.slice(0, 50)); return; }
-    }
-    if (!rows.length) { setErr(['Tidak ada kiriman yang bisa dihitung (semua stok kosong atau file kosong).']); setStatus(''); return; }
+    if (!prio) { setBukaPrio(true); return; }
+    setStatus('Mengalokasikan stok sesuai prioritas & menjumlahkan per distributor…');
+    await new Promise((r) => setTimeout(r, 30));
+    const p = prosesMassal(found, lk.distributor, { mode: prio.mode, urutan: prio.urutan });
+    if (p.error) { setErr(p.error); setStatus(''); return; }
+    const rows = p.ringkasan.filter((r) => r.qtyAlokasi > 0).map((r) => ({ kode: r.kode, nama: r.nama, kg: r.kg, m3: r.m3, nilaiPo: r.nilaiPo, jumlahSo: r.jumlahSo }));
+    const nol = p.ringkasan.filter((r) => r.qtyAlokasi === 0).length;
+    const inf = [...p.info, ...(nol ? [`${nol} distributor tidak mendapat stok sama sekali (semua item Stock Kosong), tidak dihitung ongkirnya.`] : [])];
+    if (!rows.length) { setErr(['Tidak ada stok yang bisa dikirim untuk SO yang diupload.']); setStatus(''); return; }
     setStatus(`Menghitung ongkir untuk ${rows.length} kiriman…`);
     try {
       const d = await api('/api/cek/massal', {
         method: 'POST',
-        body: {
-          gudangId: Number(gudangId), keterangan: ket || (mode === 'sap' ? files.map((f) => f.nama).join(', ') : tpl?.nama), rows,
-          dasarPrioritas: mode === 'sap' ? prio?.mode : null, items: p ? ringkasItem(p.detail) : null,
-        },
+        body: { gudangId: Number(gudangId), keterangan: ket || files.map((f) => f.nama).join(', '), rows, prioritas: prio, items: ringkasItem(p.detail) },
       });
-      setProses(p); setHasil(d); setTab(p ? 'cekcr' : 'ringkasan');
+      setInfo(inf); setProses(p); setHasil(d); setTab('cekcr');
+      setPrioPakai(prio);
+      setPrio(null); // list prioritas kosong kembali setelah proses selesai
     } catch (e2) { setErr([e2.message]); }
     setStatus('');
   }
 
+  const teksPrio = (x) => (x ? `${x.mode === 'KOTA' ? 'kota' : 'area'}${x.template ? ` (template ${x.template})` : ''}: ${x.urutan.map((k, i) => `${i + 1}. ${k}`).join(', ')}` : '-');
+
   function exportExcel() {
     const catatan = [
       `Cek cost ratio massal dari gudang ${hasil.gudang.kode}, proses #${hasil.runId}`,
-      proses ? `Prioritas alokasi: ${prio.mode === 'KOTA' ? 'kota (' + (prio.kota.map((k) => k.nama).join(', ') || 'tidak ada') + ')' : 'area (' + prio.area.map((a) => a.nama).join(', ') + ')'}` : '',
+      `Prioritas alokasi berdasarkan ${teksPrio(prioPakai)}`,
       `Dibuat ${new Date().toLocaleString('id-ID')} oleh ${user?.username}`,
     ].filter(Boolean);
     exportMassal({
       namaFile: `cek-cr-massal-${hasil.gudang.kode}-${tgl()}.xlsx`, catatan, groups,
       hasil: hasil.hasil.map((h) => ({ ...h, area: h.area || groups.find((g) => g.kode === h.kode)?.area })),
-      stokMaterial: proses?.stokMaterial, denganRef: mode === 'template',
+      stokMaterial: proses?.stokMaterial,
     });
     catatExport('cek_massal', `Export hasil massal #${hasil.runId} (${hasil.hasil.length} kiriman)`);
   }
 
   const total = hasil && hasil.hasil.reduce((a, r) => ({ nilai: a.nilai + r.nilaiPo, ongkir: a.ongkir + (r.utama?.ongkir || 0), kg: a.kg + r.kg }), { nilai: 0, ongkir: 0, kg: 0 });
-  const siap = mode === 'sap' ? Object.keys(LAPORAN).every((k) => found[k]) : !!tpl?.rows?.length;
-  const bisaEditPrio = user && MENU_ACCESS.prioritasEdit.includes(user.role);
+  const siap = Object.keys(LAPORAN).every((k) => found[k]);
   const tombolExport = <button className="btn sm" onClick={exportExcel}>Download Excel</button>;
 
   const kolomRingkasan = [
-    ...(mode === 'template' ? [{ key: 'ref', label: 'Ref' }] : []),
     { key: 'nama', label: 'Distributor', render: (r) => <><b style={{ fontWeight: 600 }}>{r.nama || '-'}</b><div className="small muted">{[r.kode, r.kota].filter(Boolean).join(', ')}</div></> },
     { key: 'kg', label: 'KG', num: true, render: (r) => angka(r.kg) },
     { key: 'm3', label: 'M³', num: true, render: (r) => angka(r.m3, 3) },
@@ -191,13 +139,8 @@ export default function Massal() {
       <div className="page-head">
         <div>
           <h1>Cek cost ratio massal</h1>
-          <p>Upload export SAP (ZSDR007, ZSDR006, VA05, Stock). Stok yang tipis dialokasikan sesuai prioritas, lalu semua SO ke distributor yang sama dihitung sebagai satu kiriman, lengkap dengan item yang dikirim.</p>
+          <p>Upload export SAP (ZSDR007, ZSDR006, VA05, Stock), tentukan list prioritas area, lalu stok yang tipis dialokasikan sesuai urutan tersebut. Semua SO ke distributor yang sama dihitung sebagai satu kiriman, lengkap dengan item yang dikirim.</p>
         </div>
-      </div>
-
-      <div className="tabs" role="tablist">
-        <button role="tab" aria-selected={mode === 'sap'} onClick={() => { setMode('sap'); reset(); }}>Dari file SAP</button>
-        <button role="tab" aria-selected={mode === 'template'} onClick={() => { setMode('template'); reset(); }}>Dari template Excel</button>
       </div>
 
       <div className="grid-2">
@@ -219,57 +162,58 @@ export default function Massal() {
             onClick={() => inp.current.click()} onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && inp.current.click()}
             onDragOver={(e) => { e.preventDefault(); setOver(true); }} onDragLeave={() => setOver(false)}
             onDrop={(e) => { e.preventDefault(); setOver(false); tambahFile(e.dataTransfer.files); }}>
-            <strong>{mode === 'sap' ? 'Pilih atau tarik file SAP ke sini' : 'Pilih atau tarik file template ke sini'}</strong>
-            <span className="muted small">
-              {mode === 'sap' ? 'Boleh 4 file terpisah atau 1 file berisi 4 sheet. Jenis laporan dikenali dari nama kolomnya.' : 'Format .xlsx sesuai template.'}
-            </span>
-            <input ref={inp} type="file" hidden multiple={mode === 'sap'} accept=".xlsx,.xls,.xlsm,.csv" data-testid="file-massal"
+            <strong>Pilih atau tarik file SAP ke sini</strong>
+            <span className="muted small">Boleh 4 file terpisah atau 1 file berisi 4 sheet. Jenis laporan dikenali dari nama kolomnya.</span>
+            <input ref={inp} type="file" hidden multiple accept=".xlsx,.xls,.xlsm,.csv" data-testid="file-massal"
               onChange={(e) => { tambahFile(e.target.files); e.target.value = ''; }} />
           </div>
-          {mode === 'sap' ? (
-            <ul className="checklist">
-              {Object.entries(LAPORAN).map(([k, L]) => (
-                <li key={k} className={found[k] ? 'ok' : 'miss'}>
-                  <b style={{ fontWeight: 600 }}>{L.label}</b>
-                  <small>{found[k] ? `${found[k].file}, sheet ${found[k].sheet}` : 'Belum ada'}</small>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="small" style={{ marginTop: 12 }}>
-              {tpl ? <>File <b>{tpl.nama}</b>: {tpl.rows.length} baris.</> : 'Belum ada file.'}{' '}
-              <button className="btn link" onClick={unduhTemplateMassal}>Download template</button>
-            </p>
-          )}
+          <ul className="checklist">
+            {Object.entries(LAPORAN).map(([k, L]) => (
+              <li key={k} className={found[k] ? 'ok' : 'miss'}>
+                <b style={{ fontWeight: 600 }}>{L.label}</b>
+                <small>{found[k] ? `${found[k].file}, sheet ${found[k].sheet}` : 'Belum ada'}</small>
+              </li>
+            ))}
+          </ul>
         </div>
 
-        {mode === 'sap' && (
-          <div className="panel">
-            <h3 className="panel-title">2. Prioritas alokasi stok</h3>
-            {prio ? (
-              <>
-                <PrioritasEditor value={prio} onChange={setPrio} semuaKota={prioApi.kota} />
-                <div className="actions" style={{ marginTop: 12 }}>
-                  {bisaEditPrio && <button className="btn ghost sm" onClick={simpanPrioritas}>Simpan sebagai bawaan</button>}
-                  <button className="btn ghost sm" onClick={() => setPrio(dariApi(prioApi))}>Kembalikan ke bawaan</button>
-                  {prioMsg && <span className="small muted">{prioMsg}</span>}
-                </div>
-              </>
-            ) : <p className="muted">Memuat…</p>}
-          </div>
-        )}
+        <div className="panel">
+          <h3 className="panel-title">2. List prioritas area</h3>
+          {!daftar ? (
+            <p className="muted small">Muncul setelah file ZSDR007 diupload. Daftar area & kota diambil dari isi ZSDR007.</p>
+          ) : prio ? (
+            <>
+              <p className="small" style={{ margin: 0 }}>
+                Berdasarkan <b>{prio.mode === 'KOTA' ? 'kota' : 'area'}</b>, {prio.urutan.length} urutan{prio.template ? `, template "${prio.template}"` : ''}.
+              </p>
+              <ol className="prio-ringkas">
+                {prio.urutan.slice(0, 12).map((k, i) => <li key={k}><b>{i + 1}</b>{k}</li>)}
+                {prio.urutan.length > 12 && <li>… {prio.urutan.length - 12} lainnya</li>}
+              </ol>
+            </>
+          ) : (
+            <div className="alert warn" style={{ margin: 0 }}>Urutan prioritas belum ditentukan untuk proses ini.</div>
+          )}
+          {daftar && (
+            <div className="actions" style={{ marginTop: 12 }}>
+              <button className="btn ghost sm" onClick={() => setBukaPrio(true)}>{prio ? 'Ubah prioritas' : 'Atur prioritas'}</button>
+            </div>
+          )}
+        </div>
       </div>
 
       {status && <div className="alert warn" role="status">{status}</div>}
       {err.length > 0 && <div className="alert err" role="alert">{err.length === 1 ? err[0] : <ul>{err.map((e) => <li key={e}>{e}</li>)}</ul>}</div>}
       <div className="actions" style={{ marginTop: 16 }}>
-        <button className="btn" disabled={!siap || !!status || !lk} onClick={hitung}>Proses &amp; hitung</button>
-        {(files.length > 0 || tpl) && <button className="btn ghost" onClick={reset}>Ganti file</button>}
+        <button className="btn" disabled={!siap || !!status || !lk || !prio} onClick={hitung}>Proses &amp; hitung</button>
+        {files.length > 0 && <button className="btn ghost" onClick={reset}>Ganti file</button>}
+        {siap && !prio && <span className="small muted">Tentukan list prioritas area dulu.</span>}
       </div>
 
       {hasil && (
         <section style={{ marginTop: 24 }} aria-label="Hasil">
           {info.map((i) => <div key={i} className="alert warn">{i}</div>)}
+          <p className="small muted">Prioritas yang dipakai: {teksPrio(prioPakai)}</p>
           <div className="stats">
             <div><div className="k">Kiriman</div><div className="v">{hasil.hasil.length}</div></div>
             {proses && <div><div className="k">Item dikirim</div><div className="v">{proses.detail.filter((d) => d.alokasi > 0).length} / {proses.detail.length}</div></div>}
@@ -305,6 +249,11 @@ export default function Massal() {
               ]} />
           )}
         </section>
+      )}
+
+      {bukaPrio && daftar && (
+        <PrioritasModal daftar={daftar} awal={prio} templates={templates} onTemplates={setTemplates}
+          onConfirm={(x) => { setPrio(x); setBukaPrio(false); }} onClose={() => setBukaPrio(false)} />
       )}
 
       {detail && (

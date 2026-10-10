@@ -8,7 +8,7 @@ import { useUser } from '@/components/Shell';
 
 const TABEL = {
   ...Object.fromEntries(Object.values(ENTITIES).map((e) => [e.table, e.label])),
-  users: 'User', cek_individual: 'Cek individual', cek_massal: 'Cek massal', cek_history: 'Riwayat cek',
+  users: 'User', prioritas_template: 'Template prioritas', cek_individual: 'Cek individual', cek_massal: 'Cek massal', cek_history: 'Riwayat cek',
 };
 const ABAI = ['updated_at', 'updated_by', 'id'];
 const REF = { ekspedisi_id: 'ekspedisi', gudang_id: 'gudang', kota_id: 'kota', armada_id: 'armada', area_id: 'area' };

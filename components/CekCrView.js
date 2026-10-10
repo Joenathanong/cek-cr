@@ -61,7 +61,7 @@ export default function CekCrView({ groups, onDetail, toolbar }) {
                     <td colSpan={9}>
                       <span className="prio-no">{g.prioritas && g.prioritas !== 9999 ? `#${g.prioritas}` : '–'}</span>
                       <b>{g.nama || g.kode}</b>{' '}
-                      <span className="muted">{[g.kode, g.kota, g.area, g.asm].filter(Boolean).join(', ')}</span>
+                      <span className="muted">{[g.kode, g.kotaLabel, g.area, g.asm].filter(Boolean).join(', ')}</span>
                     </td>
                   </tr>
                   {g.itemsTampil.map((d, i) => (
@@ -80,7 +80,7 @@ export default function CekCrView({ groups, onDetail, toolbar }) {
                   <tr className="tot">
                     <td colSpan={4}>
                       <div className="tot-line">
-                        <span>Total {g.kota || g.nama}</span>
+                        <span>Total {g.kotaLabel || g.nama}</span>
                         {u ? (
                           <span className="rek">
                             {u.ekspedisi} ({u.layanan}{u.armada ? ' ' + u.armada : ''}), {rupiah(u.ongkir)}, {leadtimeText(u.leadtime_min, u.leadtime_max)}

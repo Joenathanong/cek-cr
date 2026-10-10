@@ -10,6 +10,11 @@ import CekCrView from '@/components/CekCrView';
 import { susunGrup } from '@/lib/cekcr';
 import { exportMassal } from '@/lib/massalExport';
 
+function teksPrio(x) {
+  if (!x?.urutan) return '';
+  return `Prioritas alokasi berdasarkan ${x.mode === 'KOTA' ? 'kota' : 'area'}${x.template ? ` (template ${x.template})` : ''}: ${x.urutan.map((k, i) => `${i + 1}. ${k}`).join(', ')}`;
+}
+
 function hasilDariRow(r) {
   const x = r.hasil || {};
   const conv = (o) => o && { ...o, ...ltArr(o.lt) };
@@ -57,7 +62,7 @@ export default function Riwayat() {
     exportMassal({
       namaFile: `riwayat-massal-${run.run.id}.xlsx`,
       catatan: [`Proses massal #${run.run.id} oleh ${run.run.username}, ${tanggalWaktu(run.run.created_at)}`, run.run.keterangan || '',
-        run.run.dasar_prioritas ? `Dasar prioritas: ${run.run.dasar_prioritas}` : ''].filter(Boolean),
+        teksPrio(run.run.prioritas)].filter(Boolean),
       groups: run.items ? susunGrup(run.items, hasil) : null, hasil,
     });
     catatExport('cek_massal', `Export riwayat massal #${run.run.id}`);
@@ -148,6 +153,7 @@ export default function Riwayat() {
       {run && (
         <Modal title={`Proses massal #${run.run.id}`} onClose={() => setRun(null)} wide>
           <p className="small muted" style={{ marginTop: 0 }}>{run.run.keterangan} oleh {run.run.username}, {tanggalWaktu(run.run.created_at)}</p>
+          {run.run.prioritas && <p className="small" style={{ marginTop: 0 }}>{teksPrio(run.run.prioritas)}</p>}
           {run.items ? (
             <CekCrView groups={susunGrup(run.items, run.rows.map(hasilDariRow))} toolbar={<button className="btn sm" onClick={exportRun}>Download Excel</button>} />
           ) : (
