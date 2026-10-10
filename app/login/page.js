@@ -1,5 +1,5 @@
 'use client';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Suspense } from 'react';
 
@@ -45,15 +45,20 @@ function LoginForm() {
 }
 
 export default function LoginPage() {
+  const [b, setB] = useState(null);
+  useEffect(() => { fetch('/api/branding').then((r) => r.json()).then(setB).catch(() => setB({})); }, []);
+  const judul = b?.judul || '';
+  const [j1, ...j2] = judul.split(',');
   return (
     <div className="login-wrap">
       <div className="login-side">
-        <div style={{ fontFamily: 'var(--font-cond)', fontSize: 20, color: '#fff' }}>Cek Cost Ratio Ekspedisi</div>
+        {b?.logo ? <img className="logo" src={b.logo} alt={b.namaPt || 'Logo'} />
+          : <div style={{ fontFamily: 'var(--font-cond)', fontSize: 22, color: '#fff' }}>Cek Cost Ratio Ekspedisi</div>}
         <div>
-          <div className="big">Pilih armada<span>dengan angka, bukan tebakan.</span></div>
-          <p>Bandingkan ongkir, leadtime, dan cost ratio semua ekspedisi untuk setiap kiriman dari gudang Bogor, Bandung, dan Sidoarjo.</p>
+          {judul && <div className="big">{j2.length ? <>{j1},<span>{j2.join(',').trim()}</span></> : judul}</div>}
+          {b?.slogan && <p>{b.slogan}</p>}
         </div>
-        <div className="small" style={{ color: '#9dbdb9' }}>Warehouse &amp; Purchasing</div>
+        <div className="small" style={{ color: '#a9c196' }}>Warehouse{b?.namaPt ? ` - ${b.namaPt}` : ''}</div>
       </div>
       <div className="login-form">
         <Suspense fallback={null}><LoginForm /></Suspense>

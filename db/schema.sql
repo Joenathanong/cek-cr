@@ -144,6 +144,21 @@ CREATE TABLE audit_log (
 CREATE INDEX audit_log_waktu_idx ON audit_log (waktu DESC);
 CREATE INDEX audit_log_user_idx ON audit_log (username);
 
+-- Pengaturan aplikasi (nama PT, logo, teks login, batas CR, interval peringatan)
+CREATE TABLE pengaturan (
+  kunci      text PRIMARY KEY,
+  nilai      text,
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  updated_by text
+);
+INSERT INTO pengaturan (kunci, nilai) VALUES
+  ('nama_pt', 'PT Gloria Origita Cosmetics'),
+  ('logo', NULL),
+  ('login_judul', 'Pilih armada dengan angka, bukan tebakan.'),
+  ('login_slogan', 'Bandingkan ongkir, leadtime, dan cost ratio semua ekspedisi untuk setiap kiriman dari gudang Bogor, Bandung, dan Sidoarjo.'),
+  ('batas_cr', '23'),
+  ('interval_peringatan_jam', '4');
+
 -- Template urutan prioritas alokasi stok (dipakai di cek massal)
 CREATE TABLE prioritas_template (
   id         serial PRIMARY KEY,

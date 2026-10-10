@@ -5,6 +5,8 @@ import { bacaWorkbook } from '@/lib/excel';
 import { deteksi, prosesMassal, daftarPrioritas, LAPORAN, STATUS } from '@/lib/sap';
 import { susunGrup, ringkasItem } from '@/lib/cekcr';
 import { exportMassal } from '@/lib/massalExport';
+import { realokasi, DIKIRIM } from '@/lib/realokasi';
+import StatusPill from '@/components/StatusPill';
 import { rupiah, angka, persen, leadtimeText } from '@/lib/format';
 import DataTable from '@/components/DataTable';
 import Modal from '@/components/Modal';
@@ -82,21 +84,35 @@ export default function Massal() {
   async function hitung() {
     setErr([]); setInfo([]); setHasil(null);
     if (!prio) { setBukaPrio(true); return; }
-    setStatus('Mengalokasikan stok sesuai prioritas & menjumlahkan per distributor…');
+    setStatus('Mengalokasikan stok sesuai prioritas…');
     await new Promise((r) => setTimeout(r, 30));
     const p = prosesMassal(found, lk.distributor, { mode: prio.mode, urutan: prio.urutan });
     if (p.error) { setErr(p.error); setStatus(''); return; }
-    const rows = p.ringkasan.filter((r) => r.qtyAlokasi > 0).map((r) => ({ kode: r.kode, nama: r.nama, kg: r.kg, m3: r.m3, nilaiPo: r.nilaiPo, jumlahSo: r.jumlahSo }));
-    const nol = p.ringkasan.filter((r) => r.qtyAlokasi === 0).length;
-    const inf = [...p.info, ...(nol ? [`${nol} distributor tidak mendapat stok sama sekali (semua item Stock Kosong), tidak dihitung ongkirnya.`] : [])];
-    if (!rows.length) { setErr(['Tidak ada stok yang bisa dikirim untuk SO yang diupload.']); setStatus(''); return; }
-    setStatus(`Menghitung ongkir untuk ${rows.length} kiriman…`);
     try {
+      // 1. ambil rate & batas CR, 2. hitung ulang + alihkan stok di browser, 3. simpan & hitung final di server
+      setStatus('Menghitung cost ratio & mengalihkan stok dari distributor dengan CR di atas batas…');
+      const kodes = [...new Set(p.detail.map((d) => d.kode))];
+      const kx = await api('/api/cek/konteks', { method: 'POST', body: { gudangId: Number(gudangId), kodes } });
+      const rates = new Map();
+      for (const r of kx.rates) (rates.get(r.kota_id) || rates.set(r.kota_id, []).get(r.kota_id)).push(r);
+      const ra = realokasi(p.detail, { dist: new Map(kx.dist.map((d) => [d.kode, d])), rates, batas: kx.batas });
+      if (ra.errors.length) { setErr(['Hitung ulang dibatalkan karena stok tidak seimbang:', ...ra.errors.slice(0, 20)]); setStatus(''); return; }
+      const rows = [...ra.dist.values()].filter((d) => d.qty > 0).map((d) => {
+        const r0 = p.ringkasan.find((x) => x.kode === d.kode);
+        return { kode: d.kode, nama: r0?.nama, kg: d.kg, m3: d.m3, nilaiPo: Math.round(d.nilaiPo), jumlahSo: r0?.jumlahSo,
+          meta: { status: d.status, alasan: d.alasan, crAwal: d.crAwal, ekspAwal: d.ekspAwal, dikirim: DIKIRIM.has(d.status) } };
+      });
+      const kosong = [...ra.dist.values()].filter((d) => d.qty <= 0).length;
+      const inf = [...p.info, ...(kosong ? [`${kosong} distributor tidak mendapat stok sama sekali, tidak dihitung ongkirnya.`] : [])];
+      if (!rows.length) { setErr(['Tidak ada stok yang bisa dikirim untuk SO yang diupload.']); setStatus(''); return; }
+      setStatus(`Menyimpan hasil ${rows.length} kiriman…`);
       const d = await api('/api/cek/massal', {
         method: 'POST',
-        body: { gudangId: Number(gudangId), keterangan: ket || files.map((f) => f.nama).join(', '), rows, prioritas: prio, items: ringkasItem(p.detail) },
+        body: { gudangId: Number(gudangId), keterangan: ket || files.map((f) => f.nama).join(', '), rows, prioritas: prio, items: ringkasItem(ra.lines) },
       });
-      setInfo(inf); setProses(p); setHasil(d); setTab('cekcr');
+      setInfo(inf);
+      setProses({ ...p, detail: ra.lines, stokMaterial: ra.rekon, transfers: ra.transfers, batas: ra.batas });
+      setHasil(d); setTab('cekcr');
       setPrioPakai(prio);
       setPrio(null); // list prioritas kosong kembali setelah proses selesai
     } catch (e2) { setErr([e2.message]); }
@@ -109,28 +125,36 @@ export default function Massal() {
     const catatan = [
       `Cek cost ratio massal dari gudang ${hasil.gudang.kode}, proses #${hasil.runId}`,
       `Prioritas alokasi berdasarkan ${teksPrio(prioPakai)}`,
+      `Batas cost ratio ${proses?.batas}%: distributor di atas batas tidak dikirim, material yang dibutuhkan dialihkan ke distributor lain.`,
       `Dibuat ${new Date().toLocaleString('id-ID')} oleh ${user?.username}`,
     ].filter(Boolean);
     exportMassal({
       namaFile: `cek-cr-massal-${hasil.gudang.kode}-${tgl()}.xlsx`, catatan, groups,
       hasil: hasil.hasil.map((h) => ({ ...h, area: h.area || groups.find((g) => g.kode === h.kode)?.area })),
-      stokMaterial: proses?.stokMaterial,
+      stokMaterial: proses?.stokMaterial, transfers: proses?.transfers,
     });
     catatExport('cek_massal', `Export hasil massal #${hasil.runId} (${hasil.hasil.length} kiriman)`);
   }
 
-  const total = hasil && hasil.hasil.reduce((a, r) => ({ nilai: a.nilai + r.nilaiPo, ongkir: a.ongkir + (r.utama?.ongkir || 0), kg: a.kg + r.kg }), { nilai: 0, ongkir: 0, kg: 0 });
+  const kirimRows = hasil ? hasil.hasil.filter((r) => !r.meta || r.meta.dikirim) : [];
+  const total = hasil && kirimRows.reduce((a, r) => ({ nilai: a.nilai + r.nilaiPo, ongkir: a.ongkir + (r.utama?.ongkir || 0), kg: a.kg + r.kg }), { nilai: 0, ongkir: 0, kg: 0 });
+  const hitungStatus = (st) => (hasil ? hasil.hasil.filter((r) => r.meta?.status === st).length : 0);
+  const totalAlih = proses?.transfers?.reduce((s, t) => s + t.qty, 0) || 0;
+  const selisih = proses?.stokMaterial?.reduce((s, x) => s + Math.abs(x.selisih), 0) || 0;
   const siap = Object.keys(LAPORAN).every((k) => found[k]);
   const tombolExport = <button className="btn sm" onClick={exportExcel}>Download Excel</button>;
 
   const kolomRingkasan = [
     { key: 'nama', label: 'Distributor', render: (r) => <><b style={{ fontWeight: 600 }}>{r.nama || '-'}</b><div className="small muted">{[r.kode, r.kota].filter(Boolean).join(', ')}</div></> },
+    { key: 'status', label: 'Status', value: (r) => r.meta?.status, render: (r) => <StatusPill status={r.meta?.status || 'Dikirim'} /> },
+    { key: 'crAwal', label: 'CR awal', num: true, value: (r) => r.meta?.crAwal, render: (r) => persen(r.meta?.crAwal) },
     { key: 'kg', label: 'KG', num: true, render: (r) => angka(r.kg) },
     { key: 'm3', label: 'M³', num: true, render: (r) => angka(r.m3, 3) },
     { key: 'nilaiPo', label: 'Value PO', num: true, render: (r) => rupiah(r.nilaiPo) },
     { key: 'eksp', label: 'Rekomendasi', value: (r) => r.utama?.ekspedisi, render: (r) => r.utama ? <>{r.utama.ekspedisi}<div className="small muted">{r.utama.layanan}, {lt(r.utama)}</div></> : <span className="pill err">{r.peringatan?.[0] || 'Tidak ada rate'}</span> },
     { key: 'ongkir', label: 'Ongkir', num: true, value: (r) => r.utama?.ongkir, render: (r) => rupiah(r.utama?.ongkir) },
-    { key: 'cr', label: 'CR', num: true, value: (r) => r.utama?.cr, render: (r) => <b style={{ fontWeight: 600 }}>{persen(r.utama?.cr)}</b> },
+    { key: 'cr', label: 'CR akhir', num: true, value: (r) => r.utama?.cr, render: (r) => <b style={{ fontWeight: 600 }}>{persen(r.utama?.cr)}</b> },
+    { key: 'alasan', label: 'Alasan', sortable: false, value: (r) => r.meta?.alasan, render: (r) => <span className="small" style={{ display: 'block', minWidth: 260 }}>{r.meta?.alasan || ''}</span> },
     { key: 'aksi', label: '', sortable: false, render: (r) => <button className="btn ghost sm" onClick={() => setDetail(r)}>Detail</button> },
   ];
 
@@ -213,19 +237,24 @@ export default function Massal() {
       {hasil && (
         <section style={{ marginTop: 24 }} aria-label="Hasil">
           {info.map((i) => <div key={i} className="alert warn">{i}</div>)}
-          <p className="small muted">Prioritas yang dipakai: {teksPrio(prioPakai)}</p>
+          <details className="small muted" style={{ margin: '4px 0 12px' }}>
+            <summary style={{ cursor: 'pointer' }}>Prioritas yang dipakai: {prioPakai?.mode === 'KOTA' ? 'kota' : 'area'}{prioPakai?.template ? `, template "${prioPakai.template}"` : ''} ({prioPakai?.urutan.length} urutan)</summary>
+            <p style={{ margin: '6px 0 0' }}>{teksPrio(prioPakai)}</p>
+          </details>
           <div className="stats">
-            <div><div className="k">Kiriman</div><div className="v">{hasil.hasil.length}</div></div>
-            {proses && <div><div className="k">Item dikirim</div><div className="v">{proses.detail.filter((d) => d.alokasi > 0).length} / {proses.detail.length}</div></div>}
-            <div><div className="k">Total berat</div><div className="v">{angka(total.kg)} kg</div></div>
-            <div><div className="k">Total value PO</div><div className="v">{rupiah(total.nilai)}</div></div>
-            <div><div className="k">Total ongkir rekomendasi</div><div className="v">{rupiah(total.ongkir)}</div></div>
-            <div><div className="k">Cost ratio keseluruhan</div><div className="v">{total.nilai ? persen((total.ongkir / total.nilai) * 100) : '-'}</div></div>
+            <div><div className="k">Dikirim</div><div className="v">{kirimRows.length} distributor</div></div>
+            <div><div className="k">Tidak dikirim (CR &gt; {proses?.batas}%)</div><div className="v" style={{ color: 'var(--danger)' }}>{hitungStatus('Tidak dikirim')}</div></div>
+            <div><div className="k">Stok dialihkan</div><div className="v">{angka(totalAlih, 0)} pcs, {proses?.transfers?.length || 0} pengalihan</div></div>
+            <div><div className="k">Cek manual (tanpa rate)</div><div className="v" style={{ color: 'var(--warn-ink)' }}>{hitungStatus('Cek manual')}</div></div>
+            <div><div className="k">Total ongkir dikirim</div><div className="v">{rupiah(total.ongkir)}</div></div>
+            <div><div className="k">CR keseluruhan</div><div className="v">{total.nilai ? persen((total.ongkir / total.nilai) * 100) : '-'}</div></div>
+            <div className="good"><div className="k">Selisih stok</div><div className="v">{angka(selisih, 0)} pcs{selisih === 0 ? ', seimbang' : ''}</div></div>
           </div>
           <div className="tabs" role="tablist">
             {proses && <button role="tab" aria-selected={tab === 'cekcr'} onClick={() => setTab('cekcr')}>Cek CR (item per distributor)</button>}
-            <button role="tab" aria-selected={tab === 'ringkasan'} onClick={() => setTab('ringkasan')}>Ringkasan per distributor</button>
-            {proses && <button role="tab" aria-selected={tab === 'stok'} onClick={() => setTab('stok')}>Stok per material</button>}
+            <button role="tab" aria-selected={tab === 'ringkasan'} onClick={() => setTab('ringkasan')}>Ringkasan & alasan</button>
+            {proses && <button role="tab" aria-selected={tab === 'alih'} onClick={() => setTab('alih')}>Pengalihan stok ({proses.transfers.length})</button>}
+            {proses && <button role="tab" aria-selected={tab === 'stok'} onClick={() => setTab('stok')}>Rekonsiliasi stok</button>}
           </div>
           {tab === 'cekcr' && proses && (
             <CekCrView groups={groups} toolbar={tombolExport}
@@ -235,17 +264,31 @@ export default function Massal() {
             <DataTable columns={kolomRingkasan} rows={hasil.hasil.map((r, i) => ({ ...r, id: i }))} defaultSize={50}
               initialSort={{ key: 'cr', dir: 'desc' }} toolbar={tombolExport} />
           )}
+          {tab === 'alih' && proses && (
+            <DataTable defaultSize={50} rows={proses.transfers.map((t, i) => ({ ...t, id: i }))} toolbar={tombolExport}
+              empty="Tidak ada pengalihan: tidak ada distributor dengan CR di atas batas yang materialnya dibutuhkan distributor lain."
+              columns={[
+                { key: 'material', label: 'Material', render: (t) => <>{t.material}<div className="small muted">{t.deskripsi}</div></> },
+                { key: 'qty', label: 'Qty', num: true, render: (t) => angka(t.qty, 0) },
+                { key: 'dariKota', label: 'Dari', render: (t) => <>{t.dariKota}<div className="small muted">{t.dari}</div></> },
+                { key: 'keKota', label: 'Ke', render: (t) => <>{t.keKota}<div className="small muted">{t.ke}</div></> },
+                { key: 'crPenerimaSesudah', label: 'CR penerima', num: true, render: (t) => `${t.crPenerimaSebelum == null ? '-' : persen(t.crPenerimaSebelum)} → ${persen(t.crPenerimaSesudah)}` },
+              ]} />
+          )}
           {tab === 'stok' && proses && (
             <DataTable defaultSize={50} rows={proses.stokMaterial.map((d, i) => ({ ...d, id: i }))} toolbar={tombolExport}
-              initialSort={{ key: 'kurang', dir: 'desc' }}
+              initialSort={{ key: 'keluar', dir: 'desc' }}
               columns={[
                 { key: 'material', label: 'Material', render: (d) => <>{d.material}<div className="small muted">{d.deskripsi}</div></> },
-                { key: 'stok', label: 'Stok tersedia', num: true, render: (d) => angka(d.stok, 0) },
-                { key: 'order', label: 'Total order', num: true, render: (d) => angka(d.order, 0) },
-                { key: 'alokasi', label: 'Dialokasikan', num: true, render: (d) => angka(d.alokasi, 0) },
-                { key: 'kurang', label: 'Kurang', num: true, render: (d) => angka(d.kurang, 0) },
-                { key: 'jumlahSo', label: 'Baris SO', num: true },
-                { key: 'status', label: 'Status', render: (d) => <span className={'pill' + (d.status === STATUS.KOSONG ? ' err' : d.status === STATUS.TIPIS ? ' warn' : '')}>{d.status}</span> },
+                { key: 'stok', label: 'Stok', num: true, render: (d) => angka(d.stok, 0) },
+                { key: 'order', label: 'Order', num: true, render: (d) => angka(d.order, 0) },
+                { key: 'alokasiAwal', label: 'Alokasi awal', num: true, render: (d) => angka(d.alokasiAwal, 0) },
+                { key: 'keluar', label: 'Dialihkan', num: true, render: (d) => angka(d.keluar, 0) },
+                { key: 'dikirim', label: 'Dikirim', num: true, render: (d) => angka(d.dikirim, 0) },
+                { key: 'ditahan', label: 'Ditahan', num: true, render: (d) => angka(d.ditahan, 0) },
+                { key: 'sisa', label: 'Sisa gudang', num: true, render: (d) => angka(d.sisa, 0) },
+                { key: 'selisih', label: 'Selisih', num: true, render: (d) => <b style={{ fontWeight: 600, color: d.selisih ? 'var(--danger)' : 'var(--ok)' }}>{angka(d.selisih, 0)}</b> },
+                { key: 'statusStok', label: 'Status', render: (d) => <span className={'pill' + (d.statusStok === STATUS.KOSONG ? ' err' : d.statusStok === STATUS.TIPIS ? ' warn' : '')}>{d.statusStok}</span> },
               ]} />
           )}
         </section>

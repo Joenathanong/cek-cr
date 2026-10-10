@@ -21,7 +21,7 @@ function hasilDariRow(r) {
   return {
     kode: r.distributor_kode || '', nama: r.distributor_nama, kota: r.kota_nama, kg: r.kg, m3: r.m3, nilaiPo: r.nilai_po,
     utama: conv(x.utama), termurah: conv(x.termurah), tercepat: conv(x.tercepat), peringatan: x.peringatan || [],
-    opsi: opsiDariRiwayat(x.opsi),
+    opsi: opsiDariRiwayat(x.opsi), meta: x.meta || null,
   };
 }
 

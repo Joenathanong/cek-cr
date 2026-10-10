@@ -20,7 +20,7 @@ Teknologi: Next.js 14 (hosting di Vercel gratis) dan PostgreSQL di Neon (gratis)
 
 > `schema.sql` menghapus tabel lama. Jalankan **hanya sekali** saat pertama kali setup.
 >
-> **Sudah memasang versi sebelumnya?** Jangan jalankan ulang `schema.sql`/`seed.sql`. Cukup jalankan `db/migrasi-v3.sql` di SQL Editor (aman, data tidak hilang, bisa dari versi mana pun), lalu deploy ulang kode terbaru.
+> **Sudah memasang versi sebelumnya?** Jangan jalankan ulang `schema.sql`/`seed.sql`. Cukup jalankan `db/migrasi-v4.sql` di SQL Editor (aman, data tidak hilang, bisa dari versi mana pun), lalu deploy ulang kode terbaru.
 
 ## 2. Upload kode ke GitHub
 
@@ -58,6 +58,8 @@ Aplikasi langsung meminta ganti password. Setelah itu buat akun tim di menu **Ke
 - **Periksa file `master_data_awal.xlsx`** (sheet "Perlu Dicek"). Ada asumsi saat konversi rate card yang perlu dikonfirmasi. Perbaikan cukup lewat menu master data atau Upload Excel.
 - **Jangan pasang layanan uptime monitor / ping otomatis** ke website ini, karena database Neon tidak bisa "tidur" dan kuota compute gratis bisa habis.
 - Biarkan pengaturan compute Neon di ukuran terkecil (0,25 CU) dengan **scale to zero** aktif (bawaan Neon).
+- Menu **Pengaturan** (Admin): nama PT, logo (tampil di halaman login & sidebar), judul & slogan login, batas cost ratio cek massal (awal 23%), dan interval pop up peringatan kota tanpa rate (awal 4 jam).
+- Purchasing & Admin mendapat **pop up kota yang belum punya rate** saat login dan setiap interval yang diatur; jumlahnya juga tampil di menu Rate Ekspedisi.
 - Hapus riwayat lama lewat menu **Riwayat → Arsip** (khusus admin) bila database mendekati batas 0,5 GB. Export dulu sebelum dihapus.
 
 ## 6. Cara kerja perhitungan
@@ -82,7 +84,23 @@ Aplikasi langsung meminta ganti password. Setelah itu buat akun tim di menu **Ke
 4. Harga per pcs dari VA05 dan berat/volume per pcs dari ZSDR006 (key: No. SO + Material) dikalikan qty yang dialokasikan, lalu semua SO ke distributor yang sama dijumlahkan menjadi satu kiriman dan dihitung ongkirnya.
 5. Setelah proses selesai, list prioritas kosong kembali. Urutan yang dipakai tetap dicatat di hasil, Excel, dan Riwayat.
 6. Tampilan **Cek CR** menunjukkan item SO per distributor (status stock ready / stock tipis / Stock Kosong, qty outstanding, qty dikirim, value, kg, m³) dan baris total berisi ekspedisi rekomendasi, ongkir, leadtime, dan cost ratio.
-7. Download Excel berisi sheet **Cek CR**, **Ringkasan**, **Semua Opsi**, dan **Stok per Material**.
+7. **Hitung ulang dengan batas CR** (Pengaturan, awal 23%):
+   - distributor dengan CR di atas batas menjadi pemberi (CR tertinggi diproses dulu);
+   - hanya material yang **dibutuhkan distributor lain** (yang belum kebagian) dialihkan;
+   - penerima dipilih dari CR terendah setelah menerima barang (CR sama: urutan prioritas), dan hanya jika CR-nya tetap ≤ batas;
+   - CR pemberi dihitung ulang: jika turun ke ≤ batas (barang lebih ringan atau ekspedisi berganti) tetap dikirim, jika masih di atas batas tidak dikirim dan stoknya kembali ke gudang;
+   - pemberi tidak bisa menjadi penerima, sehingga tidak ada proses ganda;
+   - distributor tanpa rate berstatus **Cek manual** dan tidak ikut pengalihan;
+   - rekonsiliasi per material (stok = dikirim + ditahan + sisa gudang) wajib 0 selisih, jika tidak hasil dibatalkan;
+   - kolom **Status Kirim**, **CR Awal**, dan **Alasan** menjelaskan setiap perubahan.
+8. Download Excel berisi sheet **Cek CR**, **Ringkasan**, **Semua Opsi**, **Pengalihan Stok**, dan **Stok per Material** (rekonsiliasi).
+
+### Kirim hasil ke WhatsApp
+
+Di hasil cek (individual, detail massal, riwayat) ada tombol **Kirim ke WhatsApp**:
+- **HP**: gambar hasil cek dibuat otomatis dan menu bagikan terbuka; pilih WhatsApp lalu kontak.
+- **Komputer**: gambar disalin ke clipboard dan WhatsApp Web terbuka; pilih kontak, tekan **Ctrl+V**, lalu kirim.
+- Tombol **Download gambar** untuk menyimpan gambarnya.
 
 ## 7. Upload master data
 

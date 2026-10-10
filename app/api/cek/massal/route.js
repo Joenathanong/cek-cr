@@ -14,7 +14,7 @@ export const POST = handler(async (req) => {
   const u = await requireUser();
   const b = await req.json();
   if (!Array.isArray(b.rows) || !b.rows.length) throw new HttpError(400, 'Tidak ada data untuk dihitung.');
-  if (b.rows.length > 3000) throw new HttpError(400, 'Maksimal 3.000 distributor per proses.');
+  if (b.rows.length > 5000) throw new HttpError(400, 'Maksimal 3.000 distributor per proses.');
   const gudang = await getGudang(b.gudangId);
   if (!gudang) throw new HttpError(400, 'Gudang asal tidak ditemukan.');
 
@@ -41,7 +41,11 @@ export const POST = handler(async (req) => {
 
   const hasil = b.rows.map((r, i) => {
     const d = found[i];
-    const base = { kode: String(r.kode || ''), nama: d?.nama || r.nama || '', kota: d?.kota || r.kota || null, area: d?.area || null, ref: r.ref || null,
+    const meta = r.meta && typeof r.meta === 'object' ? {
+      status: String(r.meta.status || '').slice(0, 60), alasan: String(r.meta.alasan || '').slice(0, 2000),
+      crAwal: r.meta.crAwal ?? null, ekspAwal: r.meta.ekspAwal ?? null, dikirim: r.meta.dikirim !== false,
+    } : null;
+    const base = { meta, kode: String(r.kode || ''), nama: d?.nama || r.nama || '', kota: d?.kota || r.kota || null, area: d?.area || null, ref: r.ref || null,
       kg: Number(r.kg) || 0, m3: Number(r.m3) || 0, nilaiPo: Number(r.nilaiPo) || 0, jumlahSo: r.jumlahSo || null };
     if (!d) return { ...base, opsi: [], ditolak: [], utama: null, termurah: null, tercepat: null,
       peringatan: [r.kode ? 'Kode distributor belum terdaftar di master distributor.' : `Kota "${r.kota || ''}" tidak ditemukan di master kota.`] };
@@ -50,12 +54,13 @@ export const POST = handler(async (req) => {
     return { ...base, ...hitungKiriman(byKota.get(d.kota_id) || [], { kg: base.kg, m3: base.m3, nilaiPo: base.nilaiPo, batasLeadtime: d.batas_leadtime }) };
   });
 
+  const kirim = (h) => !h.meta || h.meta.dikirim;
   const runId = await withUser(u, async (q) => {
     const run = await q(
       `INSERT INTO massal_run (user_id, username, gudang_kode, keterangan, jumlah_distributor, total_nilai_po, total_ongkir, dasar_prioritas, prioritas, items)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id`,
       [u.id, u.username, gudang.kode, String(b.keterangan || '').slice(0, 300), hasil.length,
-        hasil.reduce((s, h) => s + h.nilaiPo, 0), hasil.reduce((s, h) => s + (h.utama?.ongkir || 0), 0),
+        hasil.filter(kirim).reduce((s, h) => s + h.nilaiPo, 0), hasil.filter(kirim).reduce((s, h) => s + (h.utama?.ongkir || 0), 0),
         b.prioritas?.mode || null, b.prioritas ? JSON.stringify(b.prioritas) : null, Array.isArray(b.items) ? JSON.stringify(b.items.slice(0, 20000)) : null]);
     const id = run[0].id;
     const recs = hasil.map((h) => ({
@@ -63,7 +68,7 @@ export const POST = handler(async (req) => {
       distributor_kode: h.kode, distributor_nama: h.nama, kg: h.kg, m3: h.m3, nilai_po: h.nilaiPo,
       rekom_ekspedisi: h.utama?.ekspedisi ?? null, rekom_layanan: h.utama?.layanan ?? null, rekom_ongkir: h.utama?.ongkir ?? null,
       rekom_leadtime: h.utama ? leadtimeText(h.utama.leadtime_min, h.utama.leadtime_max) : null, rekom_cr: h.utama?.cr ?? null,
-      hasil: ringkas(h),
+      hasil: { ...ringkas(h), meta: h.meta },
     }));
     await q(`INSERT INTO cek_history (run_id, tipe, user_id, username, gudang_kode, kota_nama, distributor_kode, distributor_nama,
                kg, m3, nilai_po, rekom_ekspedisi, rekom_layanan, rekom_ongkir, rekom_leadtime, rekom_cr, hasil)

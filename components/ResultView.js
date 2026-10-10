@@ -1,5 +1,7 @@
 'use client';
+import { useRef, useState } from 'react';
 import DataTable from './DataTable';
+import { bagikanWhatsApp, unduhGambar } from '@/lib/share';
 import { rupiah, angka, persen, leadtimeText } from '@/lib/format';
 
 const lt = (o) => leadtimeText(o.leadtime_min, o.leadtime_max);
@@ -20,11 +22,39 @@ export const OPSI_KOLOM = [
 /**
  * data: { asal, tujuan, distributor:[{kode,nama}], kg, m3, nilaiPo, opsi, ditolak, utama, termurah, tercepat, peringatan, batasLeadtime }
  */
-export default function ResultView({ data, toolbar }) {
+function ringkasTeks(data) {
+  const u = data.utama;
+  const baris = [
+    `*Cek cost ratio ${data.asal} → ${data.tujuan}*`,
+    (data.distributor || []).length ? `Distributor: ${data.distributor.map((d) => d.nama).join(', ')}` : null,
+    `Berat ${angka(data.kg)} kg, volume ${angka(data.m3, 3)} m³, value PO ${rupiah(data.nilaiPo)}`,
+    u ? `Rekomendasi: ${nama(u)}, ongkir ${rupiah(u.ongkir)}, ${lt(u)}, CR ${persen(u.cr)}` : 'Belum ada rekomendasi ekspedisi.',
+    data.meta?.status ? `Status: ${data.meta.status}` : null,
+  ];
+  return baris.filter(Boolean).join('\n');
+}
+
+export default function ResultView({ data, toolbar, bisaBagikan = true }) {
   const u = data.utama;
   const dist = (data.distributor || []).map((d) => d.nama).join(', ');
+  const ref = useRef(null);
+  const [info, setInfo] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const namaFile = `cek-cr-${data.asal}-${data.tujuan}.png`.replace(/[^\w.-]+/g, '-');
+
+  async function bagikan() {
+    setBusy(true); setInfo(null);
+    try {
+      const r = await bagikanWhatsApp(ref.current, ringkasTeks(data), namaFile);
+      if (r === 'copied') setInfo({ ok: true, t: 'Gambar hasil cek sudah disalin. WhatsApp Web dibuka di tab baru: pilih kontak penerima, lalu tekan Ctrl+V di kolom chat untuk menempel gambar, kemudian kirim.' });
+      else if (r === 'downloaded') setInfo({ ok: true, t: 'Browser ini tidak mengizinkan salin gambar, jadi gambar diunduh. Di WhatsApp Web, pilih kontak lalu lampirkan gambar yang baru diunduh.' });
+    } catch (e) { setInfo({ ok: false, t: 'Gagal membuat gambar: ' + e.message }); }
+    setBusy(false);
+  }
+
   return (
-    <div>
+    <div ref={ref} className="result-capture">
+      {data.meta?.alasan && <div className="alert info">{data.meta.alasan}</div>}
       {data.peringatan?.map((p) => <div key={p} className="alert warn">{p}</div>)}
       <section className="waybill" aria-label="Hasil rekomendasi">
         <div className="tape">Rekomendasi</div>
@@ -49,7 +79,17 @@ export default function ResultView({ data, toolbar }) {
             <div>Tercepat: {data.tercepat ? <><b>{nama(data.tercepat)}</b>, {lt(data.tercepat)}, {rupiah(data.tercepat.ongkir)}, CR {persen(data.tercepat.cr)}</> : '-'}</div>
           </div>
         )}
+        {bisaBagikan && (
+          <div className="share-bar no-capture">
+            <button type="button" className="btn wa" disabled={busy} onClick={bagikan}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M4 20l1.4-4.2A8 8 0 1 1 8.4 18.7z" /><path d="M9 9.5c0 3 2.5 5.5 5.5 5.5" /></svg>
+              {busy ? 'Menyiapkan gambar…' : 'Kirim ke WhatsApp'}
+            </button>
+            <button type="button" className="btn ghost" onClick={() => unduhGambar(ref.current, namaFile)}>Download gambar</button>
+          </div>
+        )}
       </section>
+      {info && <div className={'alert no-capture ' + (info.ok ? 'ok' : 'err')} role="status">{info.t}</div>}
       {data.batasLeadtime != null && <p className="small muted">Batas leadtime kota ini: {angka(data.batasLeadtime)} hari. Rekomendasi dipilih dari cost ratio terendah yang masih dalam batas.</p>}
 
       <DataTable columns={OPSI_KOLOM} rows={data.opsi || []} defaultSize={10} toolbar={toolbar}
@@ -58,7 +98,7 @@ export default function ResultView({ data, toolbar }) {
         empty="Belum ada rate ekspedisi untuk rute ini. Tambahkan di Master Data → Rate Ekspedisi." />
 
       {data.ditolak?.length > 0 && (
-        <details className="reject">
+        <details className="reject no-capture">
           <summary>{data.ditolak.length} layanan tidak bisa dipakai untuk kiriman ini</summary>
           <div className="table-wrap" style={{ marginTop: 8 }}>
             <table className="data">

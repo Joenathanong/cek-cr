@@ -42,7 +42,7 @@ export default function DataTable({
 
   return (
     <div>
-      <div className="toolbar">
+      <div className="toolbar no-capture">
         {search && (
           <input className="input" type="search" placeholder="Cari…" aria-label="Cari di tabel" value={q}
             onChange={(e) => { setQ(e.target.value); setPage(1); }} />
@@ -83,7 +83,7 @@ export default function DataTable({
           </tbody>
         </table>
       </div>
-      <div className="pager">
+      <div className="pager no-capture">
         <span>Menampilkan {filtered.length ? (cur - 1) * size + 1 : 0} sampai {Math.min(cur * size, filtered.length)} dari {filtered.length} baris</span>
         <div className="actions">
           <button className="btn ghost sm" disabled={cur <= 1} onClick={() => setPage(cur - 1)}>Sebelumnya</button>

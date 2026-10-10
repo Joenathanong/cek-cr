@@ -5,6 +5,7 @@ import { COOKIE, readSession } from './lib/session';
 const PAGE_ROLES = [
   ['/users', ['admin']],
   ['/log/login', ['admin']],
+  ['/pengaturan', ['admin']],
   ['/log', ['admin', 'purchasing', 'admin_wh']],
   ['/master/armada', ['admin', 'purchasing', 'admin_wh']],
 ];
@@ -32,5 +33,5 @@ export async function middleware(req) {
 }
 
 export const config = {
-  matcher: ['/((?!login|api/auth/login|api/auth/logout|_next/static|_next/image|favicon.ico|icon.svg).*)'],
+  matcher: ['/((?!login|api/auth/login|api/auth/logout|api/branding|_next/static|_next/image|favicon.ico|icon.svg).*)'],
 };
