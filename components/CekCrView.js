@@ -1,7 +1,7 @@
 'use client';
 import { Fragment, useMemo, useState } from 'react';
 import { rupiah, angka, persen, leadtimeText } from '@/lib/format';
-import { ketTotal } from '@/lib/cekcr';
+import { ketTotal, siapGrup } from '@/lib/cekcr';
 import { STATUS } from '@/lib/sap';
 import StatusPill from './StatusPill';
 
@@ -21,6 +21,7 @@ export default function CekCrView({ groups, onDetail, toolbar }) {
       if (filter === 'dikirim') return (d.dikirim ?? d.alokasi) > 0;
       if (filter === 'alokasi') return (d.alokasiAwal ?? d.alokasi) > 0 || (d.dikirim ?? d.alokasi) > 0;
       if (filter === 'dialihkan') return !!d.pengalihan;
+      if (filter === 'nanti') return !!d.tglReady && (d.dikirim ?? d.alokasi) > 0;
       if (filter === 'batal') return d.statusKirim === 'Tidak dikirim' && d.alokasi > 0;
       return d.status === filter;
     };
@@ -45,6 +46,7 @@ export default function CekCrView({ groups, onDetail, toolbar }) {
           <option value="dialihkan">Item yang dialihkan</option>
           <option value="batal">Item tidak dikirim (CR di atas batas)</option>
           <option value="semua">Semua item outstanding</option>
+          <option value="nanti">Item ready belakangan (besok dst.)</option>
           <option value={STATUS.READY}>Hanya stock ready</option>
           <option value={STATUS.TIPIS}>Hanya stock tipis</option>
           <option value={STATUS.KOSONG}>Hanya stock kosong</option>
@@ -76,6 +78,7 @@ export default function CekCrView({ groups, onDetail, toolbar }) {
                       <b>{g.nama || g.kode}</b>{' '}
                       <span className="muted">{[g.kode, g.kotaLabel, g.area, g.asm].filter(Boolean).join(', ')}</span>
                       {meta && <span style={{ marginLeft: 10 }}><StatusPill status={meta.status} /></span>}
+                      {siapGrup(g) && siapGrup(g) !== 'Hari ini' && (!meta || meta.dikirim) && <span className="pill info" style={{ marginLeft: 6 }}>Barang {siapGrup(g).toLowerCase()}</span>}
                     </td>
                   </tr>
                   {g.itemsTampil.map((d, i) => (
@@ -83,7 +86,8 @@ export default function CekCrView({ groups, onDetail, toolbar }) {
                       <td>{d.doc}<div className="small muted">{d.tanggal || ''}</div></td>
                       <td className="small">{d.ref}<div className="muted">{d.tipe}</div></td>
                       <td>{d.material}<div className="small muted">{d.deskripsi}</div></td>
-                      <td><span className={pillStatus(d.status)}>{d.status}</span></td>
+                      <td><span className={pillStatus(d.status)}>{d.status}</span>
+                        {d.tglReady && (d.dikirim ?? d.alokasi) > 0 && <div><span className="pill info" style={{ marginTop: 4 }}>Ready {d.siapLabel}</span></div>}</td>
                       <td className="num">{angka(d.qty, 0)}</td>
                       <td className="num">{angka(d.alokasiAwal ?? d.alokasi, 0)}</td>
                       <td className="num"><b style={{ fontWeight: 600 }}>{angka(d.dikirim ?? d.alokasi, 0)}</b>

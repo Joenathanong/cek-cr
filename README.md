@@ -95,6 +95,14 @@ Aplikasi langsung meminta ganti password. Setelah itu buat akun tim di menu **Ke
    - kolom **Status Kirim**, **CR Awal**, dan **Alasan** menjelaskan setiap perubahan.
 8. Download Excel berisi sheet **Cek CR**, **Ringkasan**, **Semua Opsi**, **Pengalihan Stok**, dan **Stok per Material** (rekonsiliasi).
 
+### Barang yang ready belakangan
+
+- Sheet STOCK cukup berisi **Material** dan **Sum of Available stock**. Kolom lain opsional.
+- Kolom **Ket1** berisi "stock ready besok" → barang dianggap siap H+1 dari tanggal proses ("lusa" → H+2).
+- Kolom opsional **Tanggal Ready** (tanggal) lebih diutamakan daripada Ket1, untuk barang yang ready di tanggal tertentu.
+- Barang tersebut **tetap dialokasikan sesuai list prioritas dan tetap dihitung dalam kiriman & CR** (dikirim bersama), hanya ditandai di Cek CR (*Ready Besok …*), filter "Item ready belakangan", dan tab/sheet **Daftar SO** (kolom *Kesiapan Barang*: Ready hari ini / Sebagian ready … / Ready …) untuk diproses di SAP.
+- Kolom S-Avail, Ket S-Avail, Status Produk, dan Pending By Avail-s di ZSDR007 **tidak perlu diisi**; semuanya dihitung sistem.
+
 ### Kirim hasil ke WhatsApp
 
 Di hasil cek (individual, detail massal, riwayat) ada tombol **Kirim ke WhatsApp**:

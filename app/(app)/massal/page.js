@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { api, catatExport } from '@/lib/client';
 import { bacaWorkbook } from '@/lib/excel';
 import { deteksi, prosesMassal, daftarPrioritas, LAPORAN, STATUS } from '@/lib/sap';
-import { susunGrup, ringkasItem } from '@/lib/cekcr';
+import { susunGrup, ringkasItem, daftarSo } from '@/lib/cekcr';
 import { exportMassal } from '@/lib/massalExport';
 import { realokasi, DIKIRIM } from '@/lib/realokasi';
 import StatusPill from '@/components/StatusPill';
@@ -245,6 +245,7 @@ export default function Massal() {
             <div><div className="k">Dikirim</div><div className="v">{kirimRows.length} distributor</div></div>
             <div><div className="k">Tidak dikirim (CR &gt; {proses?.batas}%)</div><div className="v" style={{ color: 'var(--danger)' }}>{hitungStatus('Tidak dikirim')}</div></div>
             <div><div className="k">Stok dialihkan</div><div className="v">{angka(totalAlih, 0)} pcs, {proses?.transfers?.length || 0} pengalihan</div></div>
+            {proses?.detail.some((d) => d.tglReady && d.dikirim > 0) && <div><div className="k">Item ready belakangan</div><div className="v" style={{ color: 'var(--info-ink)' }}>{proses.detail.filter((d) => d.tglReady && d.dikirim > 0).length}</div></div>}
             <div><div className="k">Cek manual (tanpa rate)</div><div className="v" style={{ color: 'var(--warn-ink)' }}>{hitungStatus('Cek manual')}</div></div>
             <div><div className="k">Total ongkir dikirim</div><div className="v">{rupiah(total.ongkir)}</div></div>
             <div><div className="k">CR keseluruhan</div><div className="v">{total.nilai ? persen((total.ongkir / total.nilai) * 100) : '-'}</div></div>
@@ -253,6 +254,7 @@ export default function Massal() {
           <div className="tabs" role="tablist">
             {proses && <button role="tab" aria-selected={tab === 'cekcr'} onClick={() => setTab('cekcr')}>Cek CR (item per distributor)</button>}
             <button role="tab" aria-selected={tab === 'ringkasan'} onClick={() => setTab('ringkasan')}>Ringkasan & alasan</button>
+            {proses && <button role="tab" aria-selected={tab === 'so'} onClick={() => setTab('so')}>Daftar SO</button>}
             {proses && <button role="tab" aria-selected={tab === 'alih'} onClick={() => setTab('alih')}>Pengalihan stok ({proses.transfers.length})</button>}
             {proses && <button role="tab" aria-selected={tab === 'stok'} onClick={() => setTab('stok')}>Rekonsiliasi stok</button>}
           </div>
@@ -263,6 +265,19 @@ export default function Massal() {
           {tab === 'ringkasan' && (
             <DataTable columns={kolomRingkasan} rows={hasil.hasil.map((r, i) => ({ ...r, id: i }))} defaultSize={50}
               initialSort={{ key: 'cr', dir: 'desc' }} toolbar={tombolExport} />
+          )}
+          {tab === 'so' && proses && (
+            <DataTable defaultSize={50} rows={daftarSo(groups).map((x, i) => ({ ...x, id: i }))} toolbar={tombolExport}
+              empty="Tidak ada SO yang dikirim."
+              columns={[
+                { key: 'doc', label: 'No. SO', render: (x) => <><b style={{ fontWeight: 600 }}>{x.doc}</b><div className="small muted">{x.tanggal} {x.tipe}</div></> },
+                { key: 'nama', label: 'Distributor', render: (x) => <>{x.nama}<div className="small muted">{x.kode}, {x.kota}</div></> },
+                { key: 'item', label: 'Item', num: true },
+                { key: 'qty', label: 'Qty', num: true, render: (x) => angka(x.qty, 0) },
+                { key: 'nilai', label: 'Value', num: true, render: (x) => rupiah(x.nilai) },
+                { key: 'ekspedisi', label: 'Ekspedisi' },
+                { key: 'siap', label: 'Kesiapan barang', render: (x) => <span className={'pill' + (x.materialNanti ? ' info' : '')}>{x.siap}</span> },
+              ]} />
           )}
           {tab === 'alih' && proses && (
             <DataTable defaultSize={50} rows={proses.transfers.map((t, i) => ({ ...t, id: i }))} toolbar={tombolExport}
@@ -280,6 +295,7 @@ export default function Massal() {
               initialSort={{ key: 'keluar', dir: 'desc' }}
               columns={[
                 { key: 'material', label: 'Material', render: (d) => <>{d.material}<div className="small muted">{d.deskripsi}</div></> },
+                { key: 'siapLabel', label: 'Siap', render: (d) => (d.siapLabel && d.siapLabel !== 'Hari ini' ? <span className="pill info">{d.siapLabel}</span> : 'Hari ini') },
                 { key: 'stok', label: 'Stok', num: true, render: (d) => angka(d.stok, 0) },
                 { key: 'order', label: 'Order', num: true, render: (d) => angka(d.order, 0) },
                 { key: 'alokasiAwal', label: 'Alokasi awal', num: true, render: (d) => angka(d.alokasiAwal, 0) },
